@@ -1,0 +1,67 @@
+# Get-SystemSpec.ps1
+# Created by Studio Mitsu
+# https://github.com/StudioMitsu/PcSpecChecker
+# MIT License
+
+$timestampDisplay = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$report = New-Object System.Collections.Generic.List[string]
+$report.Add("==== Spec Check Started at $timestampDisplay ====")
+
+$report.Add("== OS / CPU / Memory ==")
+$os = Get-CimInstance Win32_OperatingSystem
+$cpu = Get-CimInstance Win32_Processor
+$ram = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1GB, 2)
+$report.Add("OS: $($os.Caption) ($($os.OSArchitecture))")
+$report.Add("Version: $($os.Version)")
+$report.Add("CPU: $($cpu.Name) / Logical Cores: $($cpu.NumberOfLogicalProcessors)")
+$report.Add("Total RAM: ${ram} GB")
+$report.Add("")
+
+$report.Add("== GPU ==")
+$gpuList = Get-CimInstance Win32_VideoController
+foreach ($gpu in $gpuList) {
+    $vramGB = if ($gpu.AdapterRAM) { [Math]::Round($gpu.AdapterRAM / 1GB, 2) } else { "Unknown" }
+    $report.Add("$($gpu.Name) / VRAM: ${vramGB} GB")
+}
+$report.Add("")
+
+$report.Add("== Disk Info (HDD / SSD / Free Space) ==")
+$disks = Get-PhysicalDisk
+foreach ($disk in $disks) {
+    $sizeGB = [Math]::Round($disk.Size / 1GB, 2)
+    $report.Add("$($disk.FriendlyName): $($disk.MediaType) / ${sizeGB} GB")
+}
+$report.Add("")
+
+$report.Add("== Drive Free Space ==")
+Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+    $freeGB = [Math]::Round($_.Free / 1GB, 2)
+    $usedGB = [Math]::Round($_.Used / 1GB, 2)
+    $report.Add("$($_.Name): Used ${usedGB} GB / Free ${freeGB} GB")
+}
+$report.Add("")
+
+$report.Add("== Virtual Memory (Page File) ==")
+$pagefiles = Get-CimInstance Win32_PageFileUsage
+foreach ($pf in $pagefiles) {
+    $report.Add("$($pf.Name): In Use $($pf.CurrentUsage) MB / Peak $($pf.PeakUsage) MB")
+}
+$report.Add("")
+
+$report.Add("== System Summary ==")
+$info = Get-ComputerInfo | Select-Object CsName, OsName, OsArchitecture, CsProcessors, CsTotalPhysicalMemory
+$report.Add("Computer Name: " + $info.CsName)
+$report.Add("OS: " + $info.OsName)
+$report.Add("Architecture: " + $info.OsArchitecture)
+$report.Add("Processor: " + $info.CsProcessors[0])
+$physicalMemoryGB = [Math]::Round($info.CsTotalPhysicalMemory / 1GB, 2)
+$report.Add("Total Physical Memory: ${physicalMemoryGB} GB")
+
+$report.Add("==== End ====")
+$report.Add("")
+
+Write-Output ($report -join "`r`n")
+
+Write-Host ""
+Write-Host "Press any key to exit..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
