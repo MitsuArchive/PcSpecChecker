@@ -1,7 +1,11 @@
 # Get-SystemSpec.ps1
 # Created by Studio Mitsu
-# https://github.com/StudioMitsu/PcSpecChecker
+# https://github.com/MitsuArchive/PcSpecChecker
 # MIT License
+
+param(
+    [switch]$Detail
+)
 
 $timestampDisplay = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $report = New-Object System.Collections.Generic.List[string]
@@ -34,7 +38,7 @@ foreach ($disk in $disks) {
 $report.Add("")
 
 $report.Add("== Drive Free Space ==")
-Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -ne 'Temp' } | ForEach-Object {
     $freeGB = [Math]::Round($_.Free / 1GB, 2)
     $usedGB = [Math]::Round($_.Used / 1GB, 2)
     $report.Add("$($_.Name): Used ${usedGB} GB / Free ${freeGB} GB")
@@ -49,13 +53,43 @@ foreach ($pf in $pagefiles) {
 $report.Add("")
 
 $report.Add("== System Summary ==")
-$info = Get-ComputerInfo | Select-Object CsName, OsName, OsArchitecture, CsProcessors, CsTotalPhysicalMemory
+$info = Get-ComputerInfo | Select-Object CsName, OsName, OsArchitecture, CsTotalPhysicalMemory
 $report.Add("Computer Name: " + $info.CsName)
 $report.Add("OS: " + $info.OsName)
 $report.Add("Architecture: " + $info.OsArchitecture)
-$report.Add("Processor: " + $info.CsProcessors[0])
+$report.Add("Processor: " + $cpu.Name)
 $physicalMemoryGB = [Math]::Round($info.CsTotalPhysicalMemory / 1GB, 2)
 $report.Add("Total Physical Memory: ${physicalMemoryGB} GB")
+$report.Add("")
+
+if ($Detail) {
+    $report.Add("== Detailed Hardware Info ==")
+    $bios = Get-CimInstance Win32_BIOS
+    $report.Add("BIOS Version: $($bios.SMBIOSBIOSVersion)")
+    $report.Add("BIOS Manufacturer: $($bios.Manufacturer)")
+    $report.Add("BIOS Release Date: $($bios.ReleaseDate)")
+
+    $baseBoard = Get-CimInstance Win32_BaseBoard
+    $report.Add("Motherboard Manufacturer: $($baseBoard.Manufacturer)")
+    $report.Add("Motherboard Product: $($baseBoard.Product)")
+
+    $tpm = Get-WmiObject -Namespace "Root\\CIMv2\\Security\\MicrosoftTpm" -Class Win32_Tpm -ErrorAction SilentlyContinue
+    if ($tpm) {
+        $report.Add("TPM Present: Yes")
+        $report.Add("TPM Version: $($tpm.SpecVersion)")
+    } else {
+        $report.Add("TPM Present: No")
+    }
+
+    $bitlocker = Get-BitLockerVolume -MountPoint C: -ErrorAction SilentlyContinue
+    if ($bitlocker) {
+        $report.Add("BitLocker Status (C:): $($bitlocker.VolumeStatus)")
+    }
+
+    $firmware = (Get-ComputerInfo).BiosFirmwareType
+    $report.Add("Firmware Type: $firmware")
+    $report.Add("")
+}
 
 $report.Add("==== End ====")
 $report.Add("")
