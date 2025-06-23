@@ -4,8 +4,21 @@
 # MIT License
 
 param(
-    [switch]$Detail
+    [switch]$Detail,
+    [switch]$Network
 )
+
+$allowedSwitches = @('-Detail', '-Network')
+$rawLine = $MyInvocation.Line
+$parsedArgs = ($rawLine -split '\s+') | Where-Object { $_ -like '-*' }
+$invalidArgs = $parsedArgs | Where-Object { $_ -notin $allowedSwitches }
+
+if ($invalidArgs.Count -gt 0) {
+    Write-Host "Error: Unknown parameter(s): $($invalidArgs -join ', ')" -ForegroundColor Red
+    Write-Host "Allowed parameters: -Detail, -Network"
+    exit 1
+}
+
 
 $timestampDisplay = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $report = New-Object System.Collections.Generic.List[string]
@@ -88,6 +101,33 @@ if ($Detail) {
 
     $firmware = (Get-ComputerInfo).BiosFirmwareType
     $report.Add("Firmware Type: $firmware")
+    $report.Add("")
+}
+
+if ($Network) {
+    $report.Add("== Network Information ==")
+    $netAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
+    foreach ($adapter in $netAdapters) {
+        $report.Add("Adapter Name: $($adapter.Name)")
+        $report.Add("  MAC Address: $($adapter.MacAddress)")
+        $report.Add("  Link Speed: $($adapter.LinkSpeed)")
+        $ipInfo = Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex | Where-Object { $_.AddressFamily -eq 'IPv4' }
+        foreach ($ip in $ipInfo) {
+            $report.Add("  IP Address: $($ip.IPAddress)")
+            $report.Add("  Subnet Mask: $($ip.PrefixLength)")
+            $report.Add("  Default Gateway: $($ip.DefaultGateway)")
+        }
+        $dnsInfo = (Get-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ErrorAction SilentlyContinue).ServerAddresses
+        if ($dnsInfo) {
+            $report.Add("  DNS Servers: $($dnsInfo -join ', ')")
+        }
+        $report.Add("")
+    }
+
+    $hostname = [System.Net.Dns]::GetHostName()
+    $domain = (Get-WmiObject Win32_ComputerSystem).Domain
+    $report.Add("Host Name: $hostname")
+    $report.Add("Domain Name: $domain")
     $report.Add("")
 }
 
