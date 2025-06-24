@@ -5,17 +5,18 @@
 
 param(
     [switch]$Detail,
-    [switch]$Network
+    [switch]$Network,
+    [switch]$Monitor
 )
 
-$allowedSwitches = @('-Detail', '-Network')
+$allowedSwitches = @('-Detail', '-Network', '-Monitor')
 $rawLine = $MyInvocation.Line
 $parsedArgs = ($rawLine -split '\s+') | Where-Object { $_ -like '-*' }
 $invalidArgs = $parsedArgs | Where-Object { $_ -notin $allowedSwitches }
 
 if ($invalidArgs.Count -gt 0) {
     Write-Host "Error: Unknown parameter(s): $($invalidArgs -join ', ')" -ForegroundColor Red
-    Write-Host "Allowed parameters: -Detail, -Network"
+    Write-Host "Allowed parameters: -Detail, -Network, -Monitor"
     exit 1
 }
 
@@ -124,12 +125,41 @@ if ($Network) {
         $report.Add("")
     }
 
-    $hostname = [System.Net.Dns]::GetHostName()
+     $hostname = [System.Net.Dns]::GetHostName()
     $domain = (Get-WmiObject Win32_ComputerSystem).Domain
     $report.Add("Host Name: $hostname")
     $report.Add("Domain Name: $domain")
     $report.Add("")
 }
+
+if ($Monitor) {
+    $report.Add("== System Monitoring Info ==")
+
+    $uptime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+    $uptimeDelta = (Get-Date) - $uptime
+    $report.Add("Uptime: {0:%d} days {0:hh\:mm\:ss}" -f $uptimeDelta)
+
+    $battery = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue
+    if ($battery) {
+        $report.Add("Battery Status: $($battery.BatteryStatus)")
+        $report.Add("Estimated Charge Remaining: $($battery.EstimatedChargeRemaining)%")
+    } else {
+        $report.Add("Battery: Not Detected")
+    }
+
+    try {
+        $temp = Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace "root/wmi" -ErrorAction Stop
+        foreach ($t in $temp) {
+            $celsius = [math]::Round(($t.CurrentTemperature - 2732) / 10.0, 1)
+            $report.Add("CPU Temperature: $celsius °C")
+        }
+    } catch {
+        $report.Add("CPU Temperature: Unable to retrieve (sensor unavailable)")
+    }
+
+    $report.Add("")
+}
+
 
 $report.Add("==== End ====")
 $report.Add("")
