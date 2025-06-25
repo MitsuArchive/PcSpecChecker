@@ -6,17 +6,19 @@
 param(
     [switch]$Detail,
     [switch]$Network,
-    [switch]$Monitor
+    [switch]$Monitor,
+    [switch]$AppList
 )
 
-$allowedSwitches = @('-Detail', '-Network', '-Monitor')
+
+$allowedSwitches = @('-Detail', '-Network', '-Monitor', '-AppList')
 $rawLine = $MyInvocation.Line
 $parsedArgs = ($rawLine -split '\s+') | Where-Object { $_ -like '-*' }
 $invalidArgs = $parsedArgs | Where-Object { $_ -notin $allowedSwitches }
 
 if ($invalidArgs.Count -gt 0) {
     Write-Host "Error: Unknown parameter(s): $($invalidArgs -join ', ')" -ForegroundColor Red
-    Write-Host "Allowed parameters: -Detail, -Network, -Monitor"
+    Write-Host "Allowed parameters: -Detail, -Network, -Monitor, AppList"
     exit 1
 }
 
@@ -155,6 +157,24 @@ if ($Monitor) {
         }
     } catch {
         $report.Add("CPU Temperature: Unable to retrieve (sensor unavailable)")
+    }
+
+    $report.Add("")
+}
+
+if ($AppList) {
+    $report.Add("== Installed Applications ==")
+
+    $apps = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* ,
+                         HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName } |
+            Sort-Object DisplayName
+
+    foreach ($app in $apps) {
+        $name = $app.DisplayName
+        $ver  = $app.DisplayVersion
+        $pub  = $app.Publisher
+        $report.Add("$name`t| Version: $ver`t| Publisher: $pub")
     }
 
     $report.Add("")
